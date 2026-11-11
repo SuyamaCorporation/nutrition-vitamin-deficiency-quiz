@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>栄養素・ビタミン欠乏症リスク診断クイズ</title>
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gradient-to-br from-orange-50 to-yellow-50 min-h-screen">
+<div class="max-w-2xl mx-auto px-4 py-8">
+  <div class="bg-white rounded-2xl shadow-lg p-6 mb-6 text-center">
+    <h1 class="text-2xl font-bold text-gray-800 mb-1">栄養素・ビタミン欠乏症リスク診断</h1>
+    <p class="text-gray-500 text-sm">食習慣・症状から6種の栄養素欠乏リスクを評価します（全20問）</p>
+  </div>
+
+  <!-- Quiz -->
+  <div id="quiz-section">
+    <div class="bg-white rounded-2xl shadow-lg p-6 mb-4">
+      <div class="flex justify-between items-center mb-4">
+        <span class="text-sm text-gray-500">質問 <span id="q-num">1</span> / 20</span>
+        <div class="w-40 bg-gray-200 rounded-full h-2">
+          <div id="q-progress" class="bg-orange-500 h-2 rounded-full transition-all" style="width:5%"></div>
+        </div>
+      </div>
+      <p id="q-text" class="text-gray-800 font-semibold text-base mb-5 leading-relaxed"></p>
+      <div id="q-options" class="space-y-2"></div>
+      <div class="flex gap-3 mt-6">
+        <button onclick="prevQ()" id="btn-prev" aria-label="前の質問に戻る" class="flex-1 py-2 rounded-xl border-2 border-gray-200 text-gray-600 font-semibold hover:bg-gray-50 transition" disabled>◀ 前へ</button>
+        <button onclick="nextQ()" id="btn-next" aria-label="次の質問へ進む" class="flex-1 py-2 rounded-xl bg-orange-600 text-white font-semibold hover:bg-orange-700 transition" disabled>次へ ▶</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Result -->
+  <div id="result-section" class="hidden">
+    <div class="bg-white rounded-2xl shadow-lg p-6 mb-6">
+      <h2 class="text-lg font-bold text-gray-800 mb-4">栄養素リスクスコア</h2>
+      <div id="risk-bars" class="space-y-4"></div>
+    </div>
+
+    <div id="nutrient-cards" class="space-y-4 mb-6"></div>
+
+    <div class="bg-red-50 border border-red-200 rounded-xl p-4 mb-6 text-xs text-red-800">
+      ⚠️ この診断は教育・参考目的のみです。症状が続く場合は必ず医療機関を受診してください。栄養補助食品の過剰摂取は健康被害のリスクがあります。
+    </div>
+
+    <button onclick="resetQuiz()" aria-label="もう一度診断する" class="w-full py-3 rounded-xl bg-orange-600 text-white font-semibold hover:bg-orange-700 transition">もう一度診断</button>
+  </div>
+</div>
+
+<script>
+function escHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+
+// Questions: each has scores for nutrients [vitD, B12, iron, zinc, magnesium, folate]
+const QUESTIONS = [
+  {text:'外出（屋外での活動）はどのくらいの頻度ですか？',opts:[
+    {l:'毎日1時間以上（屋外・日光あり）',v:[0,0,0,0,0,0]},
+    {l:'週3〜4回程度',v:[1,0,0,0,0,0]},
+    {l:'週1〜2回程度',v:[2,0,0,0,0,0]},
+    {l:'ほぼ室内（屋外にほとんど出ない）',v:[3,0,0,0,0,0]},
+  ]},
+  {text:'魚（特にサーモン・マグロ・サバ）を食べる頻度は？',opts:[
+    {l:'週3回以上',v:[0,0,0,0,0,0]},
+    {l:'週1〜2回',v:[1,1,0,0,0,0]},
+    {l:'月2〜3回',v:[2,2,0,0,0,0]},
+    {l:'ほとんど食べない',v:[3,2,0,0,0,0]},
+  ]},
+  {text:'肉類（赤身肉・レバー等）の摂取頻度は？',opts:[
+    {l:'ほぼ毎日',v:[0,0,0,0,0,0]},
+    {l:'週3〜4回',v:[0,1,0,0,0,0]},
+    {l:'週1〜2回',v:[0,2,1,0,0,0]},
+    {l:'ほとんど食べない（菜食・ヴィーガン）',v:[0,3,2,1,0,1]},
+  ]},
+  {text:'乳製品（牛乳・チーズ・ヨーグルト）の摂取頻度は？',opts:[
+    {l:'毎日',v:[0,0,0,0,0,0]},
+    {l:'週3〜4回',v:[1,0,0,0,0,0]},
+    {l:'週1〜2回',v:[1,0,0,0,1,0]},
+    {l:'ほとんど摂らない',v:[2,1,0,0,2,0]},
+  ]},
+  {text:'緑色葉物野菜（ほうれん草・小松菜・ブロッコリー等）の摂取頻度は？',opts:[
+    {l:'毎日2皿以上',v:[0,0,0,0,0,0]},
+    {l:'週3〜4回',v:[0,0,0,0,0,1]},
+    {l:'週1〜2回',v:[0,0,1,0,1,2]},
+    {l:'ほとんど食べない',v:[1,0,2,1,2,3]},
+  ]},
+  {text:'ナッツ・種子（アーモンド・カボチャの種等）の摂取頻度は？',opts:[
+    {l:'毎日',v:[0,0,0,0,0,0]},
+    {l:'週3〜4回',v:[0,0,0,0,1,0]},
+    {l:'週1〜2回',v:[0,0,0,1,2,0]},
+    {l:'ほとんど食べない',v:[0,0,0,2,3,0]},
+  ]},
+  {text:'豆類（豆腐・納豆・大豆・レンズ豆）の摂取頻度は？',opts:[
+    {l:'毎日',v:[0,0,0,0,0,0]},
+    {l:'週3〜4回',v:[0,0,0,0,0,1]},
+    {l:'週1〜2回',v:[0,0,1,0,1,2]},
+    {l:'ほとんど食べない',v:[0,0,2,1,2,3]},
+  ]},
+  {text:'最近、疲れやすさ・だるさを感じますか？',opts:[
+    {l:'ほとんど感じない',v:[0,0,0,0,0,0]},
+    {l:'たまに感じる',v:[1,1,1,0,1,0]},
+    {l:'週3回以上感じる',v:[2,2,2,1,2,1]},
+  ]},
+  {text:'気分の落ち込み・集中力の低下を感じますか？',opts:[
+    {l:'ほとんどない',v:[0,0,0,0,0,0]},
+    {l:'たまにある',v:[1,0,0,0,1,1]},
+    {l:'頻繁にある',v:[2,1,0,0,2,2]},
+  ]},
+  {text:'筋肉のけいれん・こむら返りが起きますか？',opts:[
+    {l:'ほとんどない',v:[0,0,0,0,0,0]},
+    {l:'月1〜2回程度',v:[1,0,0,0,2,0]},
+    {l:'週1回以上',v:[1,0,0,0,3,0]},
+  ]},
+  {text:'爪が割れやすい・髪が抜けやすいと感じますか？',opts:[
+    {l:'ほとんどない',v:[0,0,0,0,0,0]},
+    {l:'少し気になる',v:[0,0,1,2,0,0]},
+    {l:'かなり気になる',v:[0,0,2,3,0,0]},
+  ]},
+  {text:'肌が乾燥しやすい・荒れやすいですか？',opts:[
+    {l:'ほとんどない',v:[0,0,0,0,0,0]},
+    {l:'やや乾燥・荒れる',v:[1,0,0,1,0,0]},
+    {l:'かなり乾燥・荒れる',v:[2,0,0,2,0,0]},
+  ]},
+  {text:'口内炎ができやすいですか？',opts:[
+    {l:'ほとんどできない',v:[0,0,0,0,0,0]},
+    {l:'月1〜2回程度',v:[0,1,0,0,0,1]},
+    {l:'週1回以上（頻繁）',v:[0,2,0,0,0,2]},
+  ]},
+  {text:'現在の年齢は？',opts:[
+    {l:'10〜30代',v:[0,0,0,0,0,0]},
+    {l:'40〜50代',v:[1,0,0,0,0,0]},
+    {l:'60代以上',v:[2,1,0,0,0,0]},
+  ]},
+  {text:'妊娠中・授乳中・または妊娠を計画していますか？',opts:[
+    {l:'いいえ',v:[0,0,0,0,0,0]},
+    {l:'はい',v:[0,0,1,0,0,3]},
+  ]},
+  {text:'胃腸の不調（胃炎・過敏性腸症候群等）がありますか？',opts:[
+    {l:'ない',v:[0,0,0,0,0,0]},
+    {l:'たまにある',v:[1,1,1,0,1,0]},
+    {l:'慢性的にある',v:[2,3,2,1,2,1]},
+  ]},
+  {text:'お酒をよく飲みますか？',opts:[
+    {l:'ほとんど飲まない',v:[0,0,0,0,0,0]},
+    {l:'週2〜3回',v:[1,1,0,0,1,1]},
+    {l:'ほぼ毎日',v:[2,2,1,0,2,3]},
+  ]},
+  {text:'現在、特定の薬を長期服用していますか？（胃薬・制酸剤など）',opts:[
+    {l:'いいえ',v:[0,0,0,0,0,0]},
+    {l:'胃薬・制酸剤（PPI等）',v:[1,3,0,0,0,0]},
+    {l:'その他の長期処方薬',v:[0,1,0,0,0,0]},
+  ]},
+  {text:'睡眠の質はどうですか？',opts:[
+    {l:'良い（すぐ眠れ、目覚めも良い）',v:[0,0,0,0,0,0]},
+    {l:'やや悪い',v:[1,0,0,0,1,0]},
+    {l:'かなり悪い（不眠・中途覚醒等）',v:[2,0,0,0,2,0]},
+  ]},
+  {text:'最近、骨や関節の痛み・不快感を感じますか？',opts:[
+    {l:'ほとんどない',v:[0,0,0,0,0,0]},
+    {l:'たまにある',v:[2,0,0,0,0,0]},
+    {l:'頻繁にある',v:[3,0,0,0,0,0]},
+  ]},
+];
+
+const NUTRIENTS = [
+  {id:'vitD', name:'ビタミンD', icon:'☀️', color:'#F59E0B', role:'骨の強化・免疫機能・筋力維持に不可欠。日光から合成される。', symptoms:'疲労感・骨痛・筋力低下・免疫力低下・気分の落ち込み', foods:'鮭・サバ・きのこ類（UV照射）・卵黄・乳製品'},
+  {id:'B12', name:'ビタミンB12', icon:'🧬', color:'#8B5CF6', role:'神経機能・赤血球生成・DNA合成に必要。動物性食品から摂取。', symptoms:'疲労感・貧血・手足のしびれ・集中力低下・口内炎', foods:'レバー・貝類・魚・肉・卵・乳製品'},
+  {id:'iron', name:'鉄', icon:'🩸', color:'#EF4444', role:'酸素運搬（ヘモグロビン）・エネルギー代謝・免疫機能に関与。', symptoms:'疲労感・動悸・顔色不良・爪の変形・抜け毛・集中力低下', foods:'レバー・赤身肉・小松菜・大豆・のり・煮干し'},
+  {id:'zinc', name:'亜鉛', icon:'💊', color:'#06B6D4', role:'免疫機能・皮膚・毛髪・味覚・性ホルモン産生に不可欠。', symptoms:'免疫力低下・皮膚炎・爪の白点・抜け毛・味覚異常・創傷治癒遅延', foods:'牡蠣・牛肉・豚肉・ナッツ・大豆・チーズ'},
+  {id:'magnesium', name:'マグネシウム', icon:'⚡', color:'#10B981', role:'300以上の酵素反応・筋肉・神経・骨代謝・血糖制御に関与。', symptoms:'筋肉のけいれん・不眠・疲労感・頭痛・気分の変動・便秘', foods:'ナッツ・種子・ダークチョコ・豆類・全粒穀物・葉物野菜'},
+  {id:'folate', name:'葉酸', icon:'🌿', color:'#84CC16', role:'DNA合成・細胞分裂・赤血球生成・胎児の神経管発育に必須。', symptoms:'疲労感・口内炎・貧血・集中力低下・気分の落ち込み', foods:'ほうれん草・アスパラ・枝豆・レバー・納豆・ブロッコリー'},
+];
+
+const RISK_LABELS = [{min:7,label:'高',color:'text-red-600 bg-red-100'},{min:4,label:'中',color:'text-yellow-600 bg-yellow-100'},{min:0,label:'低',color:'text-green-600 bg-green-100'}];
+
+function getRiskLabel(score){ return RISK_LABELS.find(r=>score>=r.min)||RISK_LABELS[RISK_LABELS.length-1]; }
+
+let answers = new Array(20).fill(null);
+let currentQ = 0;
+
+function calcScores(){
+  const scores=[0,0,0,0,0,0];
+  answers.forEach(v=>{ if(v) v.forEach((x,i)=>scores[i]+=x); });
+  return scores;
+}
+
+function renderQ(){
+  const q=QUESTIONS[currentQ];
+  document.getElementById('q-num').textContent=currentQ+1;
+  document.getElementById('q-progress').style.width=((currentQ+1)/20*100)+'%';
+  document.getElementById('q-text').textContent=q.text;
+  const opts=document.getElementById('q-options');
+  opts.innerHTML='';
+  q.opts.forEach(opt=>{
+    const btn=document.createElement('button');
+    btn.setAttribute('aria-label',opt.l);
+    const sel=answers[currentQ]!==null && JSON.stringify(answers[currentQ])===JSON.stringify(opt.v);
+    btn.className='w-full text-left px-4 py-3 rounded-xl border-2 transition font-medium text-sm '+(sel?'border-orange-500 bg-orange-50 text-orange-800':'border-gray-200 hover:border-orange-300 hover:bg-orange-50 text-gray-700');
+    btn.textContent=opt.l;
+    btn.onclick=()=>{ answers[currentQ]=opt.v; renderQ(); };
+    opts.appendChild(btn);
+  });
+  document.getElementById('btn-prev').disabled=currentQ===0;
+  document.getElementById('btn-next').disabled=answers[currentQ]===null;
+  document.getElementById('btn-next').textContent=currentQ===19?'診断する ✨':'次へ ▶';
+}
+
+function nextQ(){
+  if(answers[currentQ]===null) return;
+  if(currentQ===19){ showResult(); return; }
+  currentQ++;
+  renderQ();
+}
+
+function prevQ(){ if(currentQ>0){ currentQ--; renderQ(); } }
+
+function showResult(){
+  const scores=calcScores();
+  document.getElementById('quiz-section').classList.add('hidden');
+  document.getElementById('result-section').classList.remove('hidden');
+
+  // Risk bars
+  const barsEl=document.getElementById('risk-bars');
+  barsEl.innerHTML='';
+  scores.forEach((score,i)=>{
+    const nut=NUTRIENTS[i];
+    const maxScore=12;
+    const pct=Math.min(100,Math.round(score/maxScore*100));
+    const risk=getRiskLabel(score);
+    const div=document.createElement('div');
+    div.innerHTML=`<div class="flex items-center gap-3 mb-1">
+      <span class="text-xl">${escHtml(nut.icon)}</span>
+      <span class="font-semibold text-gray-800 w-32 shrink-0">${escHtml(nut.name)}</span>
+      <span class="text-xs font-bold px-2 py-0.5 rounded-full ${escHtml(risk.color)}">リスク: ${escHtml(risk.label)}</span>
+    </div>
+    <div class="w-full bg-gray-200 rounded-full h-3 ml-9">
+      <div class="h-3 rounded-full transition-all" style="width:${pct}%;background:${escHtml(nut.color)}"></div>
+    </div>`;
+    barsEl.appendChild(div);
+  });
+
+  // Nutrient cards (high/medium risk only, all if all low)
+  const cards=document.getElementById('nutrient-cards');
+  cards.innerHTML='';
+  const hasHighRisk=scores.some(s=>s>=4);
+  scores.forEach((score,i)=>{
+    if(hasHighRisk && score<4) return;
+    const nut=NUTRIENTS[i];
+    const risk=getRiskLabel(score);
+    const card=document.createElement('div');
+    card.className='bg-white rounded-2xl shadow-lg p-5';
+    card.innerHTML=`<div class="flex items-center gap-3 mb-3">
+      <span class="text-3xl">${escHtml(nut.icon)}</span>
+      <div><span class="font-bold text-gray-800 text-lg">${escHtml(nut.name)}</span>
+      <span class="ml-2 text-xs font-bold px-2 py-0.5 rounded-full ${escHtml(risk.color)}">リスク: ${escHtml(risk.label)}</span></div>
+    </div>
+    <div class="space-y-2 text-sm">
+      <div><span class="font-semibold text-gray-600">役割: </span><span class="text-gray-700">${escHtml(nut.role)}</span></div>
+      <div><span class="font-semibold text-gray-600">欠乏症状: </span><span class="text-gray-700">${escHtml(nut.symptoms)}</span></div>
+      <div><span class="font-semibold text-gray-600">多い食材: </span><span class="text-gray-700">${escHtml(nut.foods)}</span></div>
+    </div>`;
+    cards.appendChild(card);
+  });
+  if(!hasHighRisk){
+    const notice=document.createElement('div');
+    notice.className='bg-green-50 border border-green-200 rounded-xl p-4 text-green-700 text-sm font-semibold text-center';
+    notice.textContent='全栄養素のリスクが低い状態です。バランス良い食生活を継続しましょう！';
+    cards.prepend(notice);
+  }
+
+  localStorage.setItem('nutrition-quiz-2026', JSON.stringify({scores, answers:answers.map(a=>a?a.map(String):[]).join('|')}));
+}
+
+function resetQuiz(){
+  answers=new Array(20).fill(null);
+  currentQ=0;
+  document.getElementById('result-section').classList.add('hidden');
+  document.getElementById('quiz-section').classList.remove('hidden');
+  renderQ();
+}
+
+renderQ();
+</script>
+</body>
+</html>
